@@ -85,7 +85,7 @@ BOOTLOADER="systemd-boot"
 # Plasma takes many hours.
 DESKTOP="none"
 
-# auto or sddm.
+# auto (KDE's Plasma Login Manager, sddm as fallback), plasmalogin or sddm.
 DISPLAY_MANAGER="auto"
 
 

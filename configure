@@ -2058,7 +2058,7 @@ function desktop_name() {
 function DESKTOP_tag()   { echo "Desktop environment"; }
 function DESKTOP_label() { echo "($(desktop_name))"; }
 function DESKTOP_show()  { return 0; }
-function DESKTOP_help()  { echo "Installs KDE Plasma with 'cave resolve plasma' (the documented Exherbo way) and the SDDM login screen. Exherbo has no binary packages, so this compiles hundreds of packages and can take a day on a slow machine. Choose 'None' to get a minimal system first and add a desktop later with cave."; }
+function DESKTOP_help()  { echo "Installs KDE Plasma with 'cave resolve plasma' (the documented Exherbo way) and KDE's Plasma Login Manager as the login screen. Exherbo has no binary packages, so this compiles hundreds of packages and can take a day on a slow machine. Choose 'None' to get a minimal system first and add a desktop later with cave."; }
 function DESKTOP_menu()  {
 	local prev_desktop="$DESKTOP"
 	if menu_radiolist_labeled \
@@ -2066,7 +2066,7 @@ function DESKTOP_menu()  {
 		"Select the desktop environment to install." \
 		"$DESKTOP" \
 		"none"   "None - console only (minimal system)" \
-		"plasma" "KDE Plasma (SDDM) - compiled from source, takes many hours"
+		"plasma" "KDE Plasma - compiled from source, takes many hours"
 	then
 		DESKTOP="$dialog_out"
 		UNSAVED_CHANGES=true
@@ -2086,17 +2086,19 @@ function display_manager_name() {
 	case "$DISPLAY_MANAGER" in
 		auto)
 			case "$DESKTOP" in
-				plasma) echo "auto: SDDM" ;;
+				plasma) echo "auto: Plasma Login Manager" ;;
 				*)      echo "auto" ;;
 			esac ;;
+		plasmalogin)    echo "Plasma Login Manager" ;;
 		sddm)           echo "SDDM" ;;
 	esac
 }
-function DISPLAY_MANAGER_help()  { echo "The graphical login screen. Only SDDM (KDE's) is supported. If the package cannot be found in the Exherbo repositories, the system boots to a text login and 'startplasma-wayland' can be started by hand."; }
+function DISPLAY_MANAGER_help()  { echo "The graphical login screen. Automatic uses KDE's Plasma Login Manager (kde/plasma-login-manager) and falls back to SDDM if that cannot be installed. If no login screen can be installed, the system boots to a text login and 'startplasma-wayland' can be started by hand."; }
 function DISPLAY_MANAGER_menu()  {
 	local items=(
-		"auto"    "Automatic (matches the desktop)"
-		"sddm"    "SDDM (KDE's login screen)"
+		"auto"        "Automatic (Plasma Login Manager, SDDM as fallback)"
+		"plasmalogin" "Plasma Login Manager (KDE's login screen)"
+		"sddm"        "SDDM (only if your repositories provide it)"
 	)
 	if menu_radiolist_labeled \
 		"Login screen" \

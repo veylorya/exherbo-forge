@@ -81,8 +81,8 @@ function check_config() {
 		|| die "DESKTOP must be one of: none, plasma"
 	[[ $BOOTLOADER =~ ^(systemd-boot|grub)$ ]] \
 		|| die "BOOTLOADER must be one of: systemd-boot, grub"
-	[[ $DISPLAY_MANAGER =~ ^(auto|sddm)$ ]] \
-		|| die "DISPLAY_MANAGER must be one of: auto, sddm"
+	[[ $DISPLAY_MANAGER =~ ^(auto|plasmalogin|sddm)$ ]] \
+		|| die "DISPLAY_MANAGER must be one of: auto, plasmalogin, sddm"
 	[[ $KERNEL_CONFIG =~ ^(live|full)$ ]] \
 		|| die "KERNEL_CONFIG must be one of: live, full"
 	[[ $EXHERBO_STAGE_URL == https://*.tar.xz ]] \

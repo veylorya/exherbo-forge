@@ -115,7 +115,18 @@ EOF
 		echo ""
 		echo "# Added by Exherbo Forge"
 		echo "*/* systemd"
-		[[ $IS_EFI == "true" ]] && echo "sys-apps/systemd efi"
+		# Plain "[[ ]] && echo" would make this group fail whenever the test is false.
+		if [[ $IS_EFI == "true" ]]; then
+			echo "sys-apps/systemd efi"
+		fi
+		# GRUB is only built for EFI systems with its efi option.
+		if [[ $BOOTLOADER == "grub" ]]; then
+			echo "sys-boot/grub efi"
+		fi
+		# Wi-Fi support in NetworkManager is an option (Wi-Fi daemon providers keep their defaults).
+		if [[ $NETWORK_BACKEND == "networkmanager" ]]; then
+			echo "net-apps/NetworkManager wifi"
+		fi
 	} >> /etc/paludis/options.conf \
 		|| die "Could not write /etc/paludis/options.conf"
 
@@ -183,15 +194,21 @@ function install_systemd() {
 # ---- kernel -------------------------------------------------------------
 
 function kernel_build_prerequisites() {
+	# program -> package (names checked against https://summer.exherbo.org/packages/)
+	local -A pkg_of=(
+		[bc]="sys-apps/bc"
+		[flex]="sys-devel/flex"
+		[bison]="sys-devel/bison"
+	)
 	local tool
 	for tool in bc flex bison; do
 		command -v "$tool" &>/dev/null && continue
-		einfo "Installing $tool (needed to build the kernel)"
-		cave_install "$tool"
+		einfo "Installing ${pkg_of[$tool]} (needed to build the kernel)"
+		cave_install "${pkg_of[$tool]}"
 	done
 	if [[ -z $(find /usr -name libelf.h -print -quit 2>/dev/null) ]]; then
-		einfo "Installing elfutils (needed to build the kernel)"
-		cave_install elfutils
+		einfo "Installing dev-util/elfutils (needed to build the kernel)"
+		cave_install dev-util/elfutils
 	fi
 }
 
@@ -274,19 +291,19 @@ function install_kernel() {
 # Headers have to match the installed kernel. Best effort: only user space builds need them.
 function install_kernel_headers() {
 	einfo "Installing linux-headers"
-	cave_install_optional linux-headers
+	cave_install_optional sys-kernel/linux-headers
 }
 
 function install_firmware() {
 	einfo "Installing linux-firmware"
-	cave_install_optional linux-firmware
+	cave_install_optional firmware/linux-firmware
 }
 
 # Sets HAVE_INITRAMFS=true if /boot/initramfs-$KERNEL_RELEASE.img exists afterwards.
 function install_initramfs() {
 	HAVE_INITRAMFS=false
 	einfo "Installing dracut and generating the initramfs"
-	if ! cave_install_optional dracut; then
+	if ! cave_install_optional sys-boot/dracut; then
 		return 0
 	fi
 	local args=(--force --kver "$KERNEL_RELEASE")
@@ -345,12 +362,12 @@ EOF
 
 function install_bootloader_grub() {
 	einfo "Installing GRUB"
-	cave_install grub
+	# The efi option for sys-boot/grub is set in /etc/paludis/options.conf by configure_paludis.
+	cave_install sys-boot/grub
 	# A hand written grub.cfg is deterministic and does not depend on grub-mkconfig finding the kernel.
 	local esp_uuid
 	esp_uuid="$(get_blkid_uuid_for_id "$DISK_ID_EFI")"
 
-	einfo "If grub-install complains that x86_64-efi is unavailable, rebuild grub with its EFI platform option enabled."
 	try grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=Exherbo
 	# Some firmwares ignore the boot entry and only look at the removable-media path.
 	try grub-install --target=x86_64-efi --efi-directory=/boot --removable
@@ -449,7 +466,7 @@ function setup_sudo() {
 	[[ -n $USER_NAME && $USER_SUDO == "true" ]] || return 0
 
 	einfo "Installing sudo and allowing the wheel group"
-	cave_install_optional sudo || return 0
+	cave_install_optional app-admin/sudo || return 0
 	command -v visudo &>/dev/null || { ewarn "sudo was installed but visudo is missing."; return 0; }
 	mkdir_or_die 0750 /etc/sudoers.d
 	echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/10-wheel \
@@ -501,7 +518,7 @@ function configure_network() {
 	case "$NETWORK_BACKEND" in
 		iwd)
 			einfo "Installing iwd (use 'iwctl' to manage wifi)"
-			if cave_install_optional iwd; then
+			if cave_install_optional net-wireless/iwd; then
 				mkdir_or_die 0755 /etc/iwd
 				cat > /etc/iwd/main.conf <<EOF
 [General]
@@ -520,7 +537,7 @@ EOF
 			;;
 		networkmanager)
 			einfo "Installing NetworkManager"
-			if cave_install_optional NetworkManager; then
+			if cave_install_optional net-apps/NetworkManager; then
 				enable_service NetworkManager
 			else
 				ewarn "NetworkManager could not be installed; falling back to wired DHCP via systemd-networkd."
@@ -555,18 +572,36 @@ function copy_live_wifi_profiles() {
 
 # ---- desktop ------------------------------------------------------------
 
-# KDE Plasma via the documented "plasma" set (https://exherbo.org/docs/kde.html) and SDDM.
+# KDE Plasma via the documented "plasma" set (https://exherbo.org/docs/kde.html) and a login screen.
+# The kde repository ships KDE's Plasma Login Manager (kde/plasma-login-manager, systemd unit
+# plasmalogin.service). I could not find an sddm package in the Exherbo package browser, so sddm
+# is only a fallback.
 function install_desktop() {
 	[[ $DESKTOP == "plasma" ]] || return 0
 
 	einfo "Installing KDE Plasma (compiled from source: this takes many hours)"
 	try cave resolve --execute --skip-phase test --continue-on-failure if-satisfied plasma
 
-	if cave_install_optional sddm; then
-		enable_service sddm
+	local dm_service=""
+	case "$DISPLAY_MANAGER" in
+		auto|plasmalogin)
+			if cave_install_optional kde/plasma-login-manager; then
+				dm_service="plasmalogin"
+			elif [[ $DISPLAY_MANAGER == "auto" ]] && cave_install_optional sddm; then
+				dm_service="sddm"
+			fi
+			;;
+		sddm)
+			cave_install_optional sddm && dm_service="sddm"
+			;;
+	esac
+
+	if [[ -n $dm_service ]]; then
+		enable_service "$dm_service"
 		try systemctl set-default graphical.target
 	else
 		ewarn "No login screen installed; the system will boot to a text console."
+		ewarn "Log in there and start the desktop with 'startplasma-wayland'."
 	fi
 }
 
